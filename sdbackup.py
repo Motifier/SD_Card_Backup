@@ -6,6 +6,7 @@ import sys
 from gpiozero import Button, LED
 from signal import pause
 from datetime import datetime
+import threading
 
 
 def log(message, print_to_screen=False):
@@ -19,50 +20,66 @@ def log(message, print_to_screen=False):
         print(log_message)
 
 
-def flash_led():
+def led_flash():
     led = LED(LED_PIN)
-    led.on()
+    while copying:  # Assuming 'copying' is a variable indicating whether copying is in progress
+        led.on()
+        sleep(0.5)  # Adjust the duration of each flash as needed
+        led.off()
+        sleep(0.5)
+
+    led.off()  # Ensure the LED is turned off after copying is done
     log('LED flashed.')
 
 
 def copy_files(source_loc):
-    # Read destination path from id.txt on SDCARD or use default
-    # sdcard_path = '/media/sdcard/'
-    id_file_path = os.path.join(source_loc, 'id.txt')
+    global copying
+    copying = True
 
-    if os.path.exists(id_file_path):
-        with open(id_file_path, 'r') as id_file:
-            destination_path = id_file.read().strip()
-            log(f'id.txt found',
+    flash_thread = threading.Thread(target=flash_led)
+    flash_thread.start()
+
+    try:
+
+        # Read destination path from id.txt on SDCARD or use default
+        # sdcard_path = '/media/sdcard/'
+        id_file_path = os.path.join(source_loc, 'id.txt')
+
+        if os.path.exists(id_file_path):
+            with open(id_file_path, 'r') as id_file:
+                destination_path = id_file.read().strip()
+                log(f'id.txt found',
+                    print_to_screen=PRINT_TO_SCREEN)
+        else:
+            destination_path = DEFAULT_DESTINATION_PATH
+            log(f'id.txt NOT found, using default path',
                 print_to_screen=PRINT_TO_SCREEN)
-    else:
-        destination_path = DEFAULT_DESTINATION_PATH
-        log(f'id.txt NOT found, using default path',
+
+        destination_folder = os.path.join(USB_HDD_PATH, destination_path)
+
+        log(f'Copying files to: {destination_folder}',
             print_to_screen=PRINT_TO_SCREEN)
 
-    destination_folder = os.path.join(USB_HDD_PATH, destination_path)
+        # Copy .MP4 files from SDCARD to USB HDD
+        for root, dirs, files in os.walk(source_loc):
+            for file in files:
+                if file.endswith('.MP4'):
+                    source_file = os.path.join(root, file)
+                    destination_file = os.path.join(destination_folder, file)
 
-    log(f'Copying files to: {destination_folder}',
-        print_to_screen=PRINT_TO_SCREEN)
+                    try:
+                        log(f'Attempting to copy "{file}"',
+                            print_to_screen=PRINT_TO_SCREEN)
+                        shutil.copy2(source_file, destination_file)
+                        log(f'File "{file}" copied successfully.',
+                            print_to_screen=PRINT_TO_SCREEN)
+                    except Exception as e:
+                        log(f'Error copying file "{file}": {e}',
+                            print_to_screen=PRINT_TO_SCREEN)
 
-    # Copy .MP4 files from SDCARD to USB HDD
-    for root, dirs, files in os.walk(source_loc):
-        for file in files:
-            if file.endswith('.MP4'):
-                source_file = os.path.join(root, file)
-                destination_file = os.path.join(destination_folder, file)
-
-                try:
-                    log(f'Attempting to copy "{file}"',
-                        print_to_screen=PRINT_TO_SCREEN)
-                    shutil.copy2(source_file, destination_file)
-                    log(f'File "{file}" copied successfully.',
-                        print_to_screen=PRINT_TO_SCREEN)
-                except Exception as e:
-                    log(f'Error copying file "{file}": {e}',
-                        print_to_screen=PRINT_TO_SCREEN)
-
-    flash_led()
+    finally:
+        copying = False
+        flash_thread.join()
 
 
 def parse_size(size_str):
