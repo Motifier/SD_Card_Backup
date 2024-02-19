@@ -7,6 +7,7 @@ from gpiozero import Button, LED
 from signal import pause
 from datetime import datetime
 import threading
+import time
 
 
 def log(message, print_to_screen=False):
@@ -20,16 +21,32 @@ def log(message, print_to_screen=False):
         print(log_message)
 
 
-def led_flash():
+def flash_led():
     led = LED(LED_PIN)
     while copying:  # Assuming 'copying' is a variable indicating whether copying is in progress
         led.on()
-        sleep(0.5)  # Adjust the duration of each flash as needed
+        time.sleep(0.5)  # Adjust the duration of each flash as needed
         led.off()
-        sleep(0.5)
+        time.sleep(0.5)
 
     led.off()  # Ensure the LED is turned off after copying is done
     log('LED flashed.')
+
+
+def flash_led_error():
+    led = LED(LED_PIN)
+    while GLOBAL_ERROR:  # Assuming 'copying' is a variable indicating whether copying is in progress
+        led.on()
+        time.sleep(0.2)  # Adjust the duration of each flash as needed
+        led.off()
+        time.sleep(0.2)
+        led.on()
+        time.sleep(0.2)  # Adjust the duration of each flash as needed
+        led.off()
+        time.sleep(1.0)
+
+    led.off()  # Ensure the LED is turned off after copying is done
+    log('LED error flashed.')
 
 
 def copy_files(source_loc):
@@ -159,6 +176,7 @@ LED_PIN = 21
 USB_HDD_PATH = '/media/usbhdd/'
 DEFAULT_DESTINATION_PATH = 'sdbackup/other/'
 PRINT_TO_SCREEN = True
+GLOBAL_ERROR = False
 
 # SD CARD VARIABLES
 sd_min_size_gb = 50
@@ -174,6 +192,7 @@ hd_name = 'USB_HDD'
 
 
 def on_trigger():
+    global GLOBAL_ERROR
     log('Trigger event detected.', print_to_screen=PRINT_TO_SCREEN)
 
     unmount_list = []
@@ -192,11 +211,21 @@ def on_trigger():
     print('')
     unmount_drives(unmount_list)
 
+    GLOBAL_ERROR = True
+    flash_error_thread = threading.Thread(target=flash_led_error)
+    flash_error_thread.start()
+    try:
+        time.sleep(10)
+    finally:
+        GLOBAL_ERROR = False
+        time.sleep(2)
+        flash_error_thread.join()
+
 
 if len(sys.argv) > 1 and sys.argv[1] == '-o':
     on_trigger()
 else:
-    button = Button(TRIGGER_PIN)
+    button = Button(TRIGGER_PIN, bounce_time=0.3)
     button.when_pressed = on_trigger
 
     log('Script started.', print_to_screen=PRINT_TO_SCREEN)
